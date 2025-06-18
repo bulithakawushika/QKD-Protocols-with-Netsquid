@@ -71,7 +71,7 @@ def run_e91():
     alice.ports["c2"].connect(cchannel_A2B.ports["send"])
     bob.ports["c2"].connect(cchannel_A2B.ports["recv"])
 
-    num_bits = 20
+    num_bits = 20   # In here define EPR pairs
     alice_protocol = E91_Alice.AliceProtocol(alice, processorA, num_bits, ["qin", "c1", "c2"])
     bob_protocol = E91_Bob.BobProtocol(bob, processorB, num_bits, ["qin", "c1", "c2"])
 
