@@ -37,7 +37,7 @@ class BobProtocol(NodeProtocol):
             yield self.await_port_input(self.node.ports[self.portQ])
             qubits = self.node.ports[self.portQ].rx_input().items
             if qubits:
-                print(f"[Bob] ✅ Received {len(qubits)} qubit(s)")
+                print(f"[Bob] Received {len(qubits)} qubit(s)")
                 all_qubits.extend(qubits)
 
         self.processor.put(all_qubits)
@@ -53,8 +53,8 @@ class BobProtocol(NodeProtocol):
         self.node.ports[self.portC1].tx_output(self.basisList)
         yield self.await_port_input(self.node.ports[self.portC2])
         basis_A = self.node.ports[self.portC2].rx_input().items
-        print("[Bob] 📥 Basis from Alice:", basis_A)
+        print("[Bob] Basis from Alice:", basis_A)
 
         self.loc_measRes = Compare_basis(self.basisList, basis_A, self.loc_measRes)
         self.key = ''.join(map(str, self.loc_measRes))
-        print("[Bob] 🔑 Final key:", self.key)
+        print("[Bob] Final key:", self.key)
