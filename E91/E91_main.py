@@ -91,7 +91,7 @@ def run_e91():
         entangler.execute_program(bell_prog)
         ns.sim_run()
         qout = entangler.pop([0, 1])
-        print(f"[Source] 🔗 Sent EPR pair {i+1}")
+        print(f"[Source] Sent EPR pair {i+1}")
         source.ports["qout0"].tx_output(qout[0])
         source.ports["qout1"].tx_output(qout[1])
 
