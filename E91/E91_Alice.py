@@ -37,7 +37,7 @@ class AliceProtocol(NodeProtocol):
             yield self.await_port_input(self.node.ports[self.portQ])
             qubits = self.node.ports[self.portQ].rx_input().items
             if qubits:
-                print(f"[Alice] ✅ Received {len(qubits)} qubit(s)")
+                print(f"[Alice] Received {len(qubits)} qubit(s)")
                 all_qubits.extend(qubits)
 
         self.processor.put(all_qubits)
@@ -52,10 +52,10 @@ class AliceProtocol(NodeProtocol):
 
         yield self.await_port_input(self.node.ports[self.portC1])
         basis_B = self.node.ports[self.portC1].rx_input().items
-        print("[Alice] 📥 Basis from Bob:", basis_B)
+        print("[Alice] Basis from Bob:", basis_B)
 
         self.node.ports[self.portC2].tx_output(self.basisList)
 
         self.loc_measRes = Compare_basis(self.basisList, basis_B, self.loc_measRes)
         self.key = ''.join(map(str, self.loc_measRes))
-        print("[Alice] 🔑 Final key:", self.key)
+        print("[Alice] Final key:", self.key)
