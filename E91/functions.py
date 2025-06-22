@@ -6,10 +6,10 @@ def Random_basis_gen(n):
 
 def Compare_basis(basisA, basisB, measRes):
     """Compare two basis lists and return matching bits from measRes."""
-    print("[Compare_basis] Matching basis indices:")
+    #print("[Compare_basis] Matching basis indices:")
     key = []
     for i in range(len(basisA)):
         if i < len(basisB) and basisA[i] == basisB[i]:
-            print(f"  ✓ Match at index {i} → bit {measRes[i]}")
+            #print(f"  ✓ Match at index {i} → bit {measRes[i]}")
             key.append(measRes[i])
     return key

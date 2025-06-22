@@ -13,10 +13,16 @@ from netsquid.components.cchannel import ClassicalChannel
 from netsquid.components.models import FibreDelayModel
 from netsquid.qubits.qubitapi import create_qubits
 from netsquid.components.qprogram import QuantumProgram
+from netsquid.components.qmemory import QuantumMemory
 
 import E91_Alice
 import E91_Bob
-from performance import PerformanceTracker
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+NUM_PAIRS = 1000   # In Here Define EPR Pairs
 
 # Quantum program to create Bell pair
 class BellPairProgram(QuantumProgram):
@@ -30,9 +36,6 @@ class BellPairProgram(QuantumProgram):
 
 def run_e91():
     ns.sim_reset()
-    NUM_PAIRS = 1000   # In Here Define EPR Pairs
-    perf = PerformanceTracker(num_pairs=NUM_PAIRS)
-    perf.start_simulation()
 
     alice = Node("Alice", port_names=["qin", "c1", "c2"])
     bob = Node("Bob", port_names=["qin", "c1", "c2"])
@@ -49,12 +52,11 @@ def run_e91():
             PhysicalInstruction(INSTR_MEASURE_X, duration=3700)
         ])
 
-    qchannel_alice = QuantumChannel("qchannel_alice", length=10, # Define Fiber Length in KM
+    qchannel_alice = QuantumChannel("qchannel_alice", length=10,   # Define Fiber Length in KM
         models={"delay_model": FibreDelayModel(c=2e5),
                 "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.0),
                 "depolar_model": DepolarNoiseModel(depolar_rate=0.01)})
-
-    qchannel_bob = QuantumChannel("qchannel_bob", length=10, # Define Fiber Length in KM
+    qchannel_bob = QuantumChannel("qchannel_bob", length=10,       # Define Fiber Length in KM
         models={"delay_model": FibreDelayModel(c=2e5),
                 "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.0),
                 "depolar_model": DepolarNoiseModel(depolar_rate=0.01)})
@@ -64,22 +66,20 @@ def run_e91():
     qchannel_alice.ports["recv"].connect(alice.ports["qin"])
     qchannel_bob.ports["recv"].connect(bob.ports["qin"])
 
-    cchannel_B2A = ClassicalChannel("cB2A", length=10)
-    cchannel_A2B = ClassicalChannel("cA2B", length=10)
+    cchannel_B2A = ClassicalChannel("cB2A", length=5)
+    cchannel_A2B = ClassicalChannel("cA2B", length=5)
 
     bob.ports["c1"].connect(cchannel_B2A.ports["send"])
     alice.ports["c1"].connect(cchannel_B2A.ports["recv"])
     alice.ports["c2"].connect(cchannel_A2B.ports["send"])
     bob.ports["c2"].connect(cchannel_A2B.ports["recv"])
 
-    alice_protocol = E91_Alice.AliceProtocol(alice, processorA, NUM_PAIRS, ["qin", "c1", "c2"])
-    bob_protocol = E91_Bob.BobProtocol(bob, processorB, NUM_PAIRS, ["qin", "c1", "c2"])
+    num_bits = NUM_PAIRS
+    alice_protocol = E91_Alice.AliceProtocol(alice, processorA, num_bits, ["qin", "c1", "c2"])
+    bob_protocol = E91_Bob.BobProtocol(bob, processorB, num_bits, ["qin", "c1", "c2"])
 
-    start_bob = time.time()
-    bob_protocol.start()
-    start_alice = time.time()
     alice_protocol.start()
-    perf.set_sync_time(abs(start_bob - start_alice))
+    bob_protocol.start()
 
     entangler = QuantumProcessor("Entangler", num_positions=2,
         phys_instructions=[
@@ -87,35 +87,25 @@ def run_e91():
             PhysicalInstruction(INSTR_CNOT, duration=1)
         ])
 
-    for i in range(NUM_PAIRS):
+    for i in range(num_bits):
         q1, q2 = create_qubits(2)
         entangler.put([q1, q2])
         bell_prog = BellPairProgram()
         entangler.execute_program(bell_prog)
         ns.sim_run()
         qout = entangler.pop([0, 1])
-        perf.record_epr_sent()
+        #print(f"[Source] Sent EPR pair {i+1}")
         source.ports["qout0"].tx_output(qout[0])
         source.ports["qout1"].tx_output(qout[1])
 
     ns.sim_run()
 
-    # Count received qubits
-    perf.received_qubits_alice = len(alice_protocol.key)  # approximate
-    perf.received_qubits_bob = len(bob_protocol.key)
-
-    # Assume keys are trimmed identically
-    min_len = min(len(alice_protocol.key), len(bob_protocol.key))
-    mismatches = sum(1 for i in range(min_len) if alice_protocol.key[i] != bob_protocol.key[i])
-    perf.record_basis_match(min_len)
-    perf.record_mismatches(mismatches)
-
-    perf.end_simulation()
-
-    print("\n[E91] Alice Key:", alice_protocol.key)
-    print("\n[E91] Bob Key:  ", bob_protocol.key)
-
-    perf.report()
+    print("\n")
+    logger.info("Alice Key: %s", alice_protocol.key)
+    print("\n")
+    logger.info("Bob Key:   %s", bob_protocol.key)
+    count=len(alice_protocol.key)
+    print("Final Key Size:", count)
 
 if __name__ == "__main__":
     run_e91()
