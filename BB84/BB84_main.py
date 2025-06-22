@@ -1,3 +1,5 @@
+# Modified BB84_main.py with Synchronization Time, Classical Overhead, and Protocol Handling
+
 import netsquid as ns
 from netsquid.components import QuantumChannel, QuantumProcessor, PhysicalInstruction
 from netsquid.components.instructions import INSTR_MEASURE
@@ -5,10 +7,65 @@ from netsquid.components.models import FibreLossModel, DepolarNoiseModel, FibreD
 from netsquid.nodes import Node
 from netsquid.qubits import create_qubits, operate, measure, Z
 from netsquid.qubits.operators import H, X
+from netsquid.protocols import NodeProtocol, Protocol
 from performance import PerformanceTracker
 import random
+import time
 
 NUM_BITS = 1000
+
+class AliceProtocol(NodeProtocol):
+    def __init__(self, node, processor, bits, bases, perf):
+        super().__init__(node)
+        self.processor = processor
+        self.bits = bits
+        self.bases = bases
+        self.perf = perf
+        self.index = 0
+
+    def run(self):
+        while self.index < len(self.bits):
+            bit = self.bits[self.index]
+            basis = self.bases[self.index]
+
+            qubit = create_qubits(1)[0]
+            if bit == 1:
+                operate(qubit, X)
+            if basis == 1:
+                operate(qubit, H)
+
+            self.processor.put(qubit)
+            tx_qubit = self.processor.pop(0)
+            self.node.ports['qout'].tx_output(tx_qubit)
+            self.perf.record_epr_sent()
+            self.index += 1
+            yield self.await_timer(1e-6)  # simulate time delay
+
+class BobProtocol(NodeProtocol):
+    def __init__(self, node, processor, bases, results, perf):
+        super().__init__(node)
+        self.processor = processor
+        self.bases = bases
+        self.results = results
+        self.perf = perf
+        self.index = 0
+
+    def run(self):
+        while self.index < len(self.bases):
+            yield self.await_port_input(self.node.ports['qin'])
+            msg = self.node.ports['qin'].rx_input()
+            if msg is None:
+                continue
+            qubit = msg.items[0]
+            self.perf.record_qubit_received("bob")
+
+            if self.bases[self.index] == 1:
+                operate(qubit, H)
+
+            m, _ = measure(qubit, observable=Z)
+            self.results.append(int(m))
+            self.index += 1
+
 
 def random_bits(n):
     return [random.randint(0, 1) for _ in range(n)]
@@ -18,22 +75,15 @@ def run_bb84():
     perf = PerformanceTracker(num_pairs=NUM_BITS)
     perf.start_simulation()
 
-    # Create nodes
     alice = Node("Alice", port_names=["qout"])
     bob = Node("Bob", port_names=["qin"])
 
-    # Create quantum processors
     procA = QuantumProcessor("procA", num_positions=NUM_BITS,
-        phys_instructions=[
-            PhysicalInstruction(INSTR_MEASURE, duration=3700)
-        ])
+        phys_instructions=[PhysicalInstruction(INSTR_MEASURE, duration=3700)])
     procB = QuantumProcessor("procB", num_positions=NUM_BITS,
-        phys_instructions=[
-            PhysicalInstruction(INSTR_MEASURE, duration=3700)
-        ])
+        phys_instructions=[PhysicalInstruction(INSTR_MEASURE, duration=3700)])
 
-    # Quantum channel with realistic fiber models
-    qchannel = QuantumChannel("qchannel", length=10,  # 10 km fiber
+    qchannel = QuantumChannel("qchannel", length=10,
         models={
             "delay_model": FibreDelayModel(c=2e5),
             "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.2),
@@ -42,50 +92,32 @@ def run_bb84():
     alice.ports["qout"].connect(qchannel.ports["send"])
     bob.ports["qin"].connect(qchannel.ports["recv"])
 
-    # Generate random bits and bases
     alice_bits = random_bits(NUM_BITS)
     alice_bases = random_bits(NUM_BITS)
     bob_bases = random_bits(NUM_BITS)
     bob_results = []
 
-    for i in range(NUM_BITS):
-        bit = alice_bits[i]
-        basis = alice_bases[i]
-        bob_basis = bob_bases[i]
+    # Start time measurements for sync
+    start_bob = time.time()
+    bob_protocol = BobProtocol(bob, procB, bob_bases, bob_results, perf)
+    bob_protocol.start()
+    start_alice = time.time()
+    alice_protocol = AliceProtocol(alice, procA, alice_bits, alice_bases, perf)
+    alice_protocol.start()
+    perf.set_sync_time(abs(start_bob - start_alice))
 
-        # Prepare qubit
-        qubit = create_qubits(1)[0]
-        if bit == 1:
-            operate(qubit, X)
-        if basis == 1:
-            operate(qubit, H)
+    # Simulate quantum transmission
+    ns.sim_run()
 
-        procA.put(qubit)
-        tx_qubit = procA.pop(0)
-        alice.ports["qout"].tx_output(tx_qubit)
-        perf.record_epr_sent()
-
-        ns.sim_run()
-
-        msg = bob.ports["qin"].rx_input()
-        if msg is None:
-            continue
-
-        qubit_bob = msg.items[0]
-        perf.record_qubit_received("bob")
-
-        # Apply Bob’s basis
-        if bob_basis == 1:
-            operate(qubit_bob, H)
-
-        m, _ = measure(qubit_bob, observable=Z)
-        bob_results.append(int(m))
-
-    # Compare bases and extract keys
+    # Compare and sift key
     match_indices = [i for i in range(NUM_BITS) if alice_bases[i] == bob_bases[i]]
     valid_indices = [i for i in match_indices if i < len(bob_results)]
     alice_key = [alice_bits[i] for i in valid_indices]
     bob_key = [bob_results[i] for i in valid_indices]
+
+    # Classical communication: basis exchange
+    perf.record_classical_message()  # Alice to Bob
+    perf.record_classical_message()  # Bob to Alice
 
     mismatches = sum(a != b for a, b in zip(alice_key, bob_key))
     perf.record_basis_match(len(valid_indices))

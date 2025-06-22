@@ -1,3 +1,5 @@
+# E91_Alice.py with perf tracking for classical messages (transmissions only)
+
 from netsquid.protocols import NodeProtocol
 from netsquid.components import QuantumProgram
 from netsquid.components.instructions import INSTR_MEASURE, INSTR_MEASURE_X
@@ -21,12 +23,13 @@ class QG_A_measure(QuantumProgram):
         yield self.run(parallel=True)
 
 class AliceProtocol(NodeProtocol):
-    def __init__(self, node, processor, num_bits, port_names):
+    def __init__(self, node, processor, num_bits, port_names, perf):
         super().__init__()
         self.node = node
         self.processor = processor
         self.num_bits = num_bits
         self.portQ, self.portC1, self.portC2 = port_names
+        self.perf = perf
         self.basisList = Random_basis_gen(num_bits)
         self.loc_measRes = []
         self.key = ""
@@ -37,7 +40,6 @@ class AliceProtocol(NodeProtocol):
             yield self.await_port_input(self.node.ports[self.portQ])
             qubits = self.node.ports[self.portQ].rx_input().items
             if qubits:
-                #print(f"[Alice] Received {len(qubits)} qubit(s)")
                 all_qubits.extend(qubits)
 
         self.processor.put(all_qubits)
@@ -52,11 +54,9 @@ class AliceProtocol(NodeProtocol):
 
         yield self.await_port_input(self.node.ports[self.portC1])
         basis_B = self.node.ports[self.portC1].rx_input().items
-        #print("[Alice] Basis from Bob:", basis_B)       # PRINT THIS IF WANT TO DISPLAY BASIS OF BOB
 
         self.node.ports[self.portC2].tx_output(self.basisList)
+        self.perf.record_classical_message()  # Only transmission counted
 
         self.loc_measRes = Compare_basis(self.basisList, basis_B, self.loc_measRes)
         self.key = ''.join(map(str, self.loc_measRes))
-        #print("[Alice] Final key:", self.key)
-        #print("\n")

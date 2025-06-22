@@ -18,7 +18,6 @@ import E91_Alice
 import E91_Bob
 from performance import PerformanceTracker
 
-# Quantum program to create Bell pair
 class BellPairProgram(QuantumProgram):
     def __init__(self):
         super().__init__()
@@ -30,7 +29,7 @@ class BellPairProgram(QuantumProgram):
 
 def run_e91():
     ns.sim_reset()
-    NUM_PAIRS = 1000   # In Here Define EPR Pairs
+    NUM_PAIRS = 1000
     perf = PerformanceTracker(num_pairs=NUM_PAIRS)
     perf.start_simulation()
 
@@ -49,15 +48,19 @@ def run_e91():
             PhysicalInstruction(INSTR_MEASURE_X, duration=3700)
         ])
 
-    qchannel_alice = QuantumChannel("qchannel_alice", length=10, # Define Fiber Length in KM
-        models={"delay_model": FibreDelayModel(c=2e5),
-                "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.0),
-                "depolar_model": DepolarNoiseModel(depolar_rate=0.01)})
+    qchannel_alice = QuantumChannel("qchannel_alice", length=10,
+        models={
+            "delay_model": FibreDelayModel(c=2e5),
+            "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.2),
+            "depolar_model": DepolarNoiseModel(depolar_rate=0.01)
+        })
 
-    qchannel_bob = QuantumChannel("qchannel_bob", length=10, # Define Fiber Length in KM
-        models={"delay_model": FibreDelayModel(c=2e5),
-                "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.0),
-                "depolar_model": DepolarNoiseModel(depolar_rate=0.01)})
+    qchannel_bob = QuantumChannel("qchannel_bob", length=10,
+        models={
+            "delay_model": FibreDelayModel(c=2e5),
+            "fibre_loss": FibreLossModel(p_loss_init=0.0, p_loss_length=0.2),
+            "depolar_model": DepolarNoiseModel(depolar_rate=0.01)
+        })
 
     source.ports["qout0"].connect(qchannel_alice.ports["send"])
     source.ports["qout1"].connect(qchannel_bob.ports["send"])
@@ -66,18 +69,16 @@ def run_e91():
 
     cchannel_B2A = ClassicalChannel("cB2A", length=10)
     cchannel_A2B = ClassicalChannel("cA2B", length=10)
-
     bob.ports["c1"].connect(cchannel_B2A.ports["send"])
     alice.ports["c1"].connect(cchannel_B2A.ports["recv"])
     alice.ports["c2"].connect(cchannel_A2B.ports["send"])
     bob.ports["c2"].connect(cchannel_A2B.ports["recv"])
 
-    alice_protocol = E91_Alice.AliceProtocol(alice, processorA, NUM_PAIRS, ["qin", "c1", "c2"])
-    bob_protocol = E91_Bob.BobProtocol(bob, processorB, NUM_PAIRS, ["qin", "c1", "c2"])
-
     start_bob = time.time()
+    bob_protocol = E91_Bob.BobProtocol(bob, processorB, NUM_PAIRS, ["qin", "c1", "c2"], perf)
     bob_protocol.start()
     start_alice = time.time()
+    alice_protocol = E91_Alice.AliceProtocol(alice, processorA, NUM_PAIRS, ["qin", "c1", "c2"], perf)
     alice_protocol.start()
     perf.set_sync_time(abs(start_bob - start_alice))
 
@@ -100,21 +101,16 @@ def run_e91():
 
     ns.sim_run()
 
-    # Count received qubits
-    perf.received_qubits_alice = len(alice_protocol.key)  # approximate
+    perf.received_qubits_alice = len(alice_protocol.key)
     perf.received_qubits_bob = len(bob_protocol.key)
-
-    # Assume keys are trimmed identically
     min_len = min(len(alice_protocol.key), len(bob_protocol.key))
     mismatches = sum(1 for i in range(min_len) if alice_protocol.key[i] != bob_protocol.key[i])
     perf.record_basis_match(min_len)
     perf.record_mismatches(mismatches)
-
     perf.end_simulation()
 
     print("\n[E91] Alice Key:", alice_protocol.key)
     print("\n[E91] Bob Key:  ", bob_protocol.key)
-
     perf.report()
 
 if __name__ == "__main__":
