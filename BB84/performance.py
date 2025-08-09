@@ -63,7 +63,7 @@ class PerformanceTracker:
         avg_computation = (self.computation_time_alice + self.computation_time_bob) / 2 / self.num_pairs
         channel_loss= (Num_bits-raw_key_bits)/Num_bits
 
-        print("\n=== E91 Protocol Performance Report ===")
+        print("\n=== BB84 Protocol Performance Report ===")
         print(f"Raw Key Rate:           {raw_key_bits} bits")
         print(f"QBER:                   {qber:.2%}")
         print(f"Latency:                {duration:.3f} seconds")
